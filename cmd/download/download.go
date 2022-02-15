@@ -76,52 +76,61 @@ func checkFlags() error {
 }
 
 func download() error {
-	r, err := GetTrades(market, startTime, endTime)
-	if err != nil {
-		log.Fatal("[fatal] cannot get trades", err)
-	}
+	trades := make(map[int64][]resp.Trade)
+	lastEndTime := endTime
 
-	trades := arrangeByDate(r, sortAsc)
-	fnameFmt := "%s/FTXU-BTCUSD-%s.csv"
-
-	for date, t := range trades {
-		fname := fmt.Sprintf(fnameFmt, outDir, date)
-		err = saveCSV(t, fname)
-		if err != nil {
-			log.Fatal("[fatal] save csv file", err, fname)
+	for {
+		r, err := GetTrades(market, startTime, lastEndTime)
+		if err != nil || !r.Success {
+			return fmt.Errorf("cannot get trades, err %v, success %v", err, r.Success)
 		}
+		if len(r.Result) == 0 {
+			log.Println("[info] received all trades")
+			break
+		}
+
+		for _, t := range r.Result {
+			date := time.Date(t.Time.Year(), t.Time.Month(), t.Time.Day(), 0, 0, 0, 0, time.UTC)
+			dsec := date.Unix()
+			trades[dsec] = append(trades[dsec], t)
+			if t.Time.Before(lastEndTime) {
+				lastEndTime = t.Time
+			}
+		}
+		FlushTrades(trades, lastEndTime.Unix())
 	}
+	FlushTrades(trades, 0)
 	return nil
 }
 
-func arrangeByDate(r resp.TradeResponse, sortAsc bool) map[string][]resp.Trade {
-	res := make(map[string][]resp.Trade)
-
+// FlushTrades flushes trades from dates with unix second greater than second.
+func FlushTrades(trades map[int64][]resp.Trade, second int64) {
 	dateFmt := "20060102"
-
-	for _, t := range r.Result {
-		date := t.Time.Format(dateFmt)
-		res[date] = append(res[date], t)
-	}
-
-	// TODO: sort in parallel
-	if sortAsc {
-		for _, t := range res {
-			sort.Slice(t, func(i, j int) bool {
-				return t[i].Time.Before(t[j].Time)
-			})
+	fnameFmt := "%s/FTXU-%s-%s.csv"
+	for dsec, t := range trades {
+		if dsec > second {
+			if sortAsc {
+				sort.Slice(t, func(i, j int) bool {
+					return t[i].Time.Before(t[j].Time)
+				})
+			}
+			date := time.Unix(dsec, 0).UTC().Format(dateFmt)
+			fname := fmt.Sprintf(fnameFmt, outDir, strings.ReplaceAll(market, "/", ""), date)
+			err := saveCSV(t, fname)
+			if err != nil {
+				log.Fatal("[fatal] save csv file", err, fname)
+			}
+			delete(trades, dsec)
 		}
 	}
-	return res
 }
 
 func GetTrades(market string, startTime, endTime time.Time) (resp.TradeResponse, error) {
-	dateFmt := "20060102"
-	fname := fmt.Sprintf("%s/FTXU-%s-%s-%s.json",
+	fname := fmt.Sprintf("%s/FTXU-%s-%d-%d.json",
 		outDir,
 		strings.ReplaceAll(market, "/", ""),
-		startTime.Format(dateFmt),
-		endTime.Format(dateFmt),
+		startTime.Unix(),
+		endTime.Unix(),
 	)
 
 	url := fmt.Sprintf("%s/markets/%s/trades?start_time=%d&end_time=%d",
@@ -176,6 +185,7 @@ func saveCSV(trades []resp.Trade, fname string) error {
 			return err
 		}
 	}
+	log.Printf("[info] saved %v trades to %v", len(trades), fname)
 	return nil
 }
 
