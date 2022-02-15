@@ -34,13 +34,15 @@ var (
 	endDate   string
 	outDir    string
 	sortAsc   bool
+	raw       bool
 )
 
 var (
-	base = "https://ftx.us/api"
-	// marketName = "BTC/USD"
+	base      = "https://ftx.us/api"
 	startTime time.Time
 	endTime   time.Time
+	symbol    string
+	exchange  = "FTXU"
 )
 
 func init() {
@@ -49,6 +51,7 @@ func init() {
 	Cmd.Flags().StringVar(&endDate, "end", "", "End date (inclusive) in YYYY-MM-DD format")
 	Cmd.Flags().StringVar(&outDir, "out-dir", "", "Output directory to save data")
 	Cmd.Flags().BoolVarP(&sortAsc, "sort", "", true, "Sort output data in ascending order by time")
+	Cmd.Flags().BoolVarP(&raw, "raw", "", false, "If false, store data in btloader compatible format, otherwise, store in raw FTXU format")
 
 	Cmd.MarkFlagRequired("market")
 	Cmd.MarkFlagRequired("start")
@@ -57,7 +60,8 @@ func init() {
 }
 
 func checkFlags() error {
-	// TODO: check market.
+	// TODO: check if valid ftxu market.
+	symbol = strings.ReplaceAll(market, "/", "")
 	st, err := time.Parse("2006-01-02", startDate)
 	if err != nil {
 		return fmt.Errorf("invalid start: %w", err)
@@ -132,8 +136,8 @@ func FlushTrades(trades map[int64]map[uint64]resp.Trade, second int64) {
 				})
 			}
 			date := time.Unix(dsec, 0).UTC().Format(dateFmt)
-			fname := fmt.Sprintf(fnameFmt, outDir, strings.ReplaceAll(market, "/", ""), date)
-			err := saveCSV(tradeList, fname)
+			fname := fmt.Sprintf(fnameFmt, outDir, symbol, date)
+			err := saveCSV(tradeList, fname, raw)
 			if err != nil {
 				log.Fatal("[fatal] save csv file", err, fname)
 			}
@@ -171,7 +175,7 @@ func GetTrades(market string, startTime, endTime time.Time) (resp.TradeResponse,
 	// Debug only.
 	// fname := fmt.Sprintf("%s/FTXU-%s-%d-%d.json",
 	// 	outDir,
-	// 	strings.ReplaceAll(market, "/", ""),
+	// 	symbol,
 	// 	startTime.Unix(),
 	// 	endTime.Unix(),
 	// )
@@ -184,7 +188,7 @@ func GetTrades(market string, startTime, endTime time.Time) (resp.TradeResponse,
 	return parseResponse(b)
 }
 
-func saveCSV(trades []resp.Trade, fname string) error {
+func saveCSV(trades []resp.Trade, fname string, raw bool) error {
 	f, err := os.Create(fname)
 	if err != nil {
 		log.Println("[error] create file", err)
@@ -193,16 +197,29 @@ func saveCSV(trades []resp.Trade, fname string) error {
 	defer f.Close()
 
 	w := csv.NewWriter(f)
+	if !raw {
+		w.Comma = '|'
+	}
 	defer w.Flush()
 
-	err = w.Write(resp.TradeHeader)
+	var header []string
+	if raw {
+		header = resp.TradeHeader
+	} else {
+		header = resp.TradeHeaderForBtloader
+	}
+	err = w.Write(header)
 	if err != nil {
 		log.Println("[error] write", err)
 		return err
 	}
 
 	for _, t := range trades {
-		err = w.Write(t.Strings())
+		if raw {
+			err = w.Write(t.Strings())
+		} else {
+			err = w.Write(t.StringsForBtloader(symbol, exchange))
+		}
 		if err != nil {
 			log.Println("[error] write", err)
 			return err

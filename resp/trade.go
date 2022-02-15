@@ -13,6 +13,16 @@ var TradeHeader = []string{
 	"time",
 }
 
+var TradeHeaderForBtloader = []string{
+	"NanoTs",
+	"Symbol",
+	"Exchange",
+	"Price",
+	"Size",
+	"TradeId",
+	"TakerSide",
+}
+
 type TradeResponse struct {
 	Success bool    `json:"success"`
 	Result  []Trade `json:"result"`
@@ -41,8 +51,20 @@ func (t *Trade) Strings() []string {
 	return []string{
 		strconv.FormatUint(t.ID, 10),
 		strconv.FormatFloat(t.Price, 'f', -1, 64),
-		t.TakerSide(),
+		t.Side,
 		strconv.FormatFloat(t.Size, 'f', -1, 64),
 		t.Time.Format(time.RFC3339Nano),
+	}
+}
+
+func (t *Trade) StringsForBtloader(symbol string, exchange string) []string {
+	return []string{
+		strconv.FormatInt(t.Time.UnixNano(), 10),
+		symbol,
+		exchange,
+		strconv.FormatFloat(t.Price, 'f', -1, 64),
+		strconv.FormatFloat(t.Size, 'f', -1, 64),
+		strconv.FormatUint(t.ID, 10),
+		t.TakerSide(),
 	}
 }
