@@ -76,7 +76,7 @@ func checkFlags() error {
 }
 
 func download() error {
-	trades := make(map[int64][]resp.Trade)
+	trades := make(map[int64]map[uint64]resp.Trade)
 	defer FlushTrades(trades, 0)
 
 	lastEndTime := endTime
@@ -93,7 +93,15 @@ func download() error {
 		for _, t := range r.Result {
 			date := time.Date(t.Time.Year(), t.Time.Month(), t.Time.Day(), 0, 0, 0, 0, time.UTC)
 			dsec := date.Unix()
-			trades[dsec] = append(trades[dsec], t)
+			// New date.
+			if _, ok := trades[dsec]; !ok {
+				trades[dsec] = make(map[uint64]resp.Trade)
+			}
+			// Duplication check.
+			if _, ok := trades[dsec][t.ID]; ok {
+				log.Printf("[warn] duplicated trade ID %v on %v\n", t.ID, date)
+			}
+			trades[dsec][t.ID] = t
 			if t.Time.Before(lastEndTime) {
 				lastEndTime = t.Time
 			}
@@ -105,19 +113,27 @@ func download() error {
 }
 
 // FlushTrades flushes trades from dates with unix second greater than second.
-func FlushTrades(trades map[int64][]resp.Trade, second int64) {
+func FlushTrades(trades map[int64]map[uint64]resp.Trade, second int64) {
 	dateFmt := "20060102"
 	fnameFmt := "%s/FTXU-%s-%s.csv"
-	for dsec, t := range trades {
+	for dsec, tradeMap := range trades {
+		// Already received all trades for this date.
 		if dsec > second {
+			// Convert to slice.
+			tradeList := make([]resp.Trade, len(tradeMap))
+			i := 0
+			for _, t := range tradeMap {
+				tradeList[i] = t
+				i += 1
+			}
 			if sortAsc {
-				sort.Slice(t, func(i, j int) bool {
-					return t[i].Time.Before(t[j].Time)
+				sort.Slice(tradeList, func(i, j int) bool {
+					return tradeList[i].Time.Before(tradeList[j].Time)
 				})
 			}
 			date := time.Unix(dsec, 0).UTC().Format(dateFmt)
 			fname := fmt.Sprintf(fnameFmt, outDir, strings.ReplaceAll(market, "/", ""), date)
-			err := saveCSV(t, fname)
+			err := saveCSV(tradeList, fname)
 			if err != nil {
 				log.Fatal("[fatal] save csv file", err, fname)
 			}
@@ -127,13 +143,6 @@ func FlushTrades(trades map[int64][]resp.Trade, second int64) {
 }
 
 func GetTrades(market string, startTime, endTime time.Time) (resp.TradeResponse, error) {
-	fname := fmt.Sprintf("%s/FTXU-%s-%d-%d.json",
-		outDir,
-		strings.ReplaceAll(market, "/", ""),
-		startTime.Unix(),
-		endTime.Unix(),
-	)
-
 	url := fmt.Sprintf("%s/markets/%s/trades?start_time=%d&end_time=%d",
 		base,
 		market,
@@ -159,11 +168,18 @@ func GetTrades(market string, startTime, endTime time.Time) (resp.TradeResponse,
 		log.Println("[error] resp code", r.StatusCode)
 		return resp.TradeResponse{}, err
 	}
-	err = saveResponse(b, fname)
-	if err != nil {
-		log.Println("[error] save response error", err)
-		return resp.TradeResponse{}, err
-	}
+	// Debug only.
+	// fname := fmt.Sprintf("%s/FTXU-%s-%d-%d.json",
+	// 	outDir,
+	// 	strings.ReplaceAll(market, "/", ""),
+	// 	startTime.Unix(),
+	// 	endTime.Unix(),
+	// )
+	// err = saveResponse(b, fname)
+	// if err != nil {
+	// 	log.Println("[error] save response error", err)
+	// 	return resp.TradeResponse{}, err
+	// }
 
 	return parseResponse(b)
 }

@@ -26,11 +26,22 @@ type Trade struct {
 	Time  time.Time `json:"time"`
 }
 
+func (t *Trade) TakerSide() string {
+	switch t.Side {
+	case "buy":
+		return "B"
+	case "sell":
+		return "S"
+	default:
+		return "-"
+	}
+}
+
 func (t *Trade) Strings() []string {
 	return []string{
 		strconv.FormatUint(t.ID, 10),
 		strconv.FormatFloat(t.Price, 'f', -1, 64),
-		t.Side,
+		t.TakerSide(),
 		strconv.FormatFloat(t.Size, 'f', -1, 64),
 		t.Time.Format(time.RFC3339Nano),
 	}
