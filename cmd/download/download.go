@@ -77,6 +77,8 @@ func checkFlags() error {
 
 func download() error {
 	trades := make(map[int64][]resp.Trade)
+	defer FlushTrades(trades, 0)
+
 	lastEndTime := endTime
 
 	for {
@@ -85,7 +87,6 @@ func download() error {
 			return fmt.Errorf("cannot get trades, err %v, success %v", err, r.Success)
 		}
 		if len(r.Result) == 0 {
-			log.Println("[info] received all trades")
 			break
 		}
 
@@ -99,7 +100,7 @@ func download() error {
 		}
 		FlushTrades(trades, lastEndTime.Unix())
 	}
-	FlushTrades(trades, 0)
+	log.Println("[info] received all trades")
 	return nil
 }
 
@@ -140,22 +141,28 @@ func GetTrades(market string, startTime, endTime time.Time) (resp.TradeResponse,
 		endTime.Unix(),
 	)
 
-	log.Println("url:", url)
+	log.Println("[info] url:", url)
 
-	resp, err := http.Get(url)
+	r, err := http.Get(url)
 	if err != nil {
 		log.Println("[error] http GET error", err)
+		return resp.TradeResponse{}, err
 	}
-	defer resp.Body.Close()
+	defer r.Body.Close()
 
-	b, err := io.ReadAll(resp.Body)
+	b, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Println("[error] io ReadAll error", err)
+		return resp.TradeResponse{}, err
 	}
-	log.Println("[info] resp code", resp.StatusCode)
+	if r.StatusCode != http.StatusOK {
+		log.Println("[error] resp code", r.StatusCode)
+		return resp.TradeResponse{}, err
+	}
 	err = saveResponse(b, fname)
 	if err != nil {
 		log.Println("[error] save response error", err)
+		return resp.TradeResponse{}, err
 	}
 
 	return parseResponse(b)
