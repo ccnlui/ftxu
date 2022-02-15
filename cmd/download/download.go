@@ -202,14 +202,12 @@ func saveCSV(trades []resp.Trade, fname string, raw bool) error {
 	}
 	defer w.Flush()
 
-	var header []string
 	if raw {
-		header = resp.TradeHeader
-	}
-	err = w.Write(header)
-	if err != nil {
-		log.Println("[error] write", err)
-		return err
+		err = w.Write(resp.TradeHeader)
+		if err != nil {
+			log.Println("[error] write", err)
+			return err
+		}
 	}
 
 	for _, t := range trades {

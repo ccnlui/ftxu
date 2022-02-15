@@ -1,0 +1,32 @@
+#!/bin/bash
+
+markets="
+BTC/USD
+ETH/USD
+USDT/USD
+SOL/USD
+DOGE/USD
+MATIC/USD
+SHIB/USD
+WBTC/USD
+DAI/USD
+LTC/USD
+LINK/USD
+UNI/USD
+TRX/USD
+BCH/USD
+AAVE/USD
+GRT/USD
+MKR/USD
+BAT/USD
+YFI/USD
+SUSHI/USD
+PAXG/USD
+"
+
+for m in ${markets};do
+    s=$(echo ${m} | sed 's/\///g')
+    mkdir out/${s}
+
+    ./ftxu download -m ${m} --start 1970-01-01 --end 2022-02-14 --out-dir ./out/${s}
+done
