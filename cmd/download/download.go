@@ -205,8 +205,6 @@ func saveCSV(trades []resp.Trade, fname string, raw bool) error {
 	var header []string
 	if raw {
 		header = resp.TradeHeader
-	} else {
-		header = resp.TradeHeaderForBtloader
 	}
 	err = w.Write(header)
 	if err != nil {
